@@ -1,66 +1,33 @@
 columns:
-  - having_IP_Address: int64
-  - URL_Length: int64
-  - Shortining_Service: int64
-  - having_At_Symbol: int64
-  - double_slash_redirecting: int64
-  - Prefix_Suffix: int64
-  - having_Sub_Domain: int64
-  - SSLfinal_State: int64
-  - Domain_registeration_length: int64
-  - Favicon: int64
-  - port: int64
-  - HTTPS_token: int64
-  - Request_URL: int64
-  - URL_of_Anchor: int64
-  - Links_in_tags: int64
-  - SFH: int64
-  - Submitting_to_email: int64
-  - Abnormal_URL: int64
-  - Redirect: int64
-  - on_mouseover: int64
-  - RightClick: int64
-  - popUpWidnow: int64
-  - Iframe: int64
-  - age_of_domain: int64
-  - DNSRecord: int64
-  - web_traffic: int64
-  - Page_Rank: int64
-  - Google_Index: int64
-  - Links_pointing_to_page: int64
-  - Statistical_report: int64
-  - Result: int64
-
+  - Destination Port: int64
+  - Flow Duration: int64
+  - Total Fwd Packets: int64
+  - Total Backward Packets: int64
+  - Total Length of Fwd Packets: float64
+  - Total Length of Bwd Packets: float64
+  - Flow Bytes/s: float64
+  - Flow Packets/s: float64
+  - Fwd Packet Length Mean: float64
+  - Bwd Packet Length Mean: float64
+  - SYN Flag Count: int64
+  - ACK Flag Count: int64
+  - Init_Win_bytes_forward: int64
+  - Init_Win_bytes_backward: int64
+  - Label: int64
 
 numerical_columns:
-  - having_IP_Address
-  - URL_Length
-  - Shortining_Service
-  - having_At_Symbol
-  - double_slash_redirecting
-  - Prefix_Suffix
-  - having_Sub_Domain
-  - SSLfinal_State
-  - Domain_registeration_length
-  - Favicon
-  - port
-  - HTTPS_token
-  - Request_URL
-  - URL_of_Anchor
-  - Links_in_tags
-  - SFH
-  - Submitting_to_email
-  - Abnormal_URL
-  - Redirect
-  - on_mouseover
-  - RightClick
-  - popUpWidnow
-  - Iframe
-  - age_of_domain
-  - DNSRecord
-  - web_traffic
-  - Page_Rank
-  - Google_Index
-  - Links_pointing_to_page
-  - Statistical_report
-  - Result
+  - Destination Port
+  - Flow Duration
+  - Total Fwd Packets
+  - Total Backward Packets
+  - Total Length of Fwd Packets
+  - Total Length of Bwd Packets
+  - Flow Bytes/s
+  - Flow Packets/s
+  - Fwd Packet Length Mean
+  - Bwd Packet Length Mean
+  - SYN Flag Count
+  - ACK Flag Count
+  - Init_Win_bytes_forward
+  - Init_Win_bytes_backward
+  - Label
