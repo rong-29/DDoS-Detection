@@ -1,143 +1,139 @@
-# networksecurity/components/model_trainer.py
-
 import os
 import sys
-import logging
-from functools import reduce
-from operator import mul
+import matplotlib
+matplotlib.use("Agg")
+import matplotlib.pyplot as plt
+import pandas as pd
 
-import joblib
+from sklearn.ensemble import RandomForestClassifier
+from sklearn.svm import SVC
+from sklearn.tree import DecisionTreeClassifier
+from sklearn.pipeline import Pipeline
+from sklearn.preprocessing import StandardScaler
+from sklearn.model_selection import GridSearchCV
+from sklearn.metrics import accuracy_score
 
 from networksecurity.exception.exception import NetworkSecurityException
 from networksecurity.entity.config_entity import ModelTrainerConfig
 from networksecurity.entity.artifact_entity import DataTransformationArtifact, ModelTrainerArtifact
 from networksecurity.utils.main_utils.utils import save_object, load_numpy_array_data, load_object
 from networksecurity.utils.ml_utils.metric.classification_metric import get_classification_metric
-
-from sklearn.ensemble import RandomForestClassifier, GradientBoostingClassifier, AdaBoostClassifier
-from sklearn.linear_model import LogisticRegression
-from sklearn.svm import SVC
-from sklearn.neighbors import KNeighborsClassifier
-from sklearn.naive_bayes import GaussianNB
-import xgboost as xgb
-
-from sklearn.model_selection import GridSearchCV
-
 from networksecurity.utils.ml_utils.model.estimator import NetworkModel
+from networksecurity.logging.logger import logging
 
 
 class ModelTrainer:
-    def __init__(self, model_trainer_config: ModelTrainerConfig,
-                 data_transformation_artifact: DataTransformationArtifact):
+    def __init__(self, model_trainer_config: ModelTrainerConfig, data_transformation_artifact: DataTransformationArtifact):
         try:
             self.model_trainer_config = model_trainer_config
             self.data_transformation_artifact = data_transformation_artifact
         except Exception as e:
             raise NetworkSecurityException(e, sys) from e
 
-    def _count_combinations(self, param_grid):
-        if not param_grid:
-            return 1
-        param_lengths = [len(v) if isinstance(v, list) else 1 for v in param_grid.values()]
-        return reduce(mul, param_lengths, 1)
+    def _build_models(self):
+        return {
+            "RandomForest": (
+                RandomForestClassifier(random_state=42, class_weight="balanced"),
+                {"n_estimators": [150, 250], "max_depth": [10, 20, None]},
+            ),
+            "SVM": (
+                Pipeline([
+                    ("scaler", StandardScaler()),
+                    ("model", SVC(class_weight="balanced")),
+                ]),
+                {"model__C": [1, 10], "model__kernel": ["rbf", "linear"]},
+            ),
+            "DecisionTree": (
+                DecisionTreeClassifier(random_state=42, class_weight="balanced"),
+                {"max_depth": [8, 16, None], "min_samples_split": [2, 5]},
+            ),
+        }
+
+    def _save_comparison_plot(self, result_df: pd.DataFrame, save_dir: str):
+        fig, ax = plt.subplots(figsize=(8, 5))
+        ax.bar(result_df["model"], result_df["test_accuracy"], color=["#3b82f6", "#22c55e", "#f97316"])
+        ax.set_ylim(0, 1)
+        ax.set_title("CIC-IDS2017 DDoS检测模型准确率对比")
+        ax.set_ylabel("Test Accuracy")
+        for i, value in enumerate(result_df["test_accuracy"]):
+            ax.text(i, value + 0.01, f"{value:.4f}", ha="center")
+        plot_path = os.path.join(save_dir, "model_comparison.png")
+        plt.tight_layout()
+        plt.savefig(plot_path)
+        plt.close(fig)
+        return plot_path
 
     def train_model(self, x_train, y_train, x_test, y_test):
         try:
-            models = {
-                'RandomForestClassifier': RandomForestClassifier(),
-                'GradientBoostingClassifier': GradientBoostingClassifier(),
-                'AdaBoostClassifier': AdaBoostClassifier(),
-                'LogisticRegression': LogisticRegression(),
-                'SVC': SVC(),
-                'KNeighborsClassifier': KNeighborsClassifier(),
-                'GaussianNB': GaussianNB(),
-                'XGBoost': xgb.XGBClassifier(eval_metric='logloss', use_label_encoder=False)
-            }
-            params = {
-                'RandomForestClassifier': {'n_estimators': [50, 100], 'max_depth': [10, 20]},
-                'GradientBoostingClassifier': {'n_estimators': [50, 100], 'learning_rate': [0.05, 0.1]},
-                'AdaBoostClassifier': {'n_estimators': [50, 100], 'learning_rate': [0.1, 1.0]},
-                'LogisticRegression': {'C': [0.1, 1], 'solver': ['liblinear']},
-                'SVC': {'C': [1, 10], 'kernel': ['rbf']},
-                'KNeighborsClassifier': {'n_neighbors': [3, 5]},
-                'GaussianNB': {'var_smoothing': [1e-9]},
-                'XGBoost': {'n_estimators': [50, 100], 'learning_rate': [0.05, 0.1]}
-            }
+            models = self._build_models()
+            results = []
+            best_model_name = None
+            best_model = None
+            best_test_acc = -1
 
-            total_fits = sum(self._count_combinations(params.get(name, {})) * 3 for name in models)  # cv=3
-            fits_done = 0
-            logging.info(f"[PROGRESS]0/{total_fits}")
+            for model_name, (model, params) in models.items():
+                logging.info(f"开始训练模型: {model_name}")
+                search = GridSearchCV(model, params, cv=3, n_jobs=-1, scoring="f1", verbose=1)
+                search.fit(x_train, y_train)
 
-            model_report, best_estimators, best_params_report = {}, {}, {}
+                y_pred_test = search.best_estimator_.predict(x_test)
+                y_pred_train = search.best_estimator_.predict(x_train)
+                test_acc = accuracy_score(y_test, y_pred_test)
 
-            for model_name, model in models.items():
-                logging.info(f"====== 开始训练模型: {model_name} ======")
-                param_grid = params.get(model_name, {})
+                results.append({
+                    "model": model_name,
+                    "best_params": search.best_params_,
+                    "cv_f1": float(search.best_score_),
+                    "train_accuracy": float(accuracy_score(y_train, y_pred_train)),
+                    "test_accuracy": float(test_acc),
+                })
 
-                # --- 【重大修改】将 verbose 从 1 改为 3 ---
-                # 这会让 GridSearchCV 打印出每一次拟合的详细日志
-                grid_search = GridSearchCV(model, param_grid, cv=3, n_jobs=-1, verbose=3)
+                if test_acc > best_test_acc:
+                    best_test_acc = test_acc
+                    best_model_name = model_name
+                    best_model = search.best_estimator_
 
-                grid_search.fit(x_train, y_train)
+            if best_test_acc < self.model_trainer_config.expected_accuracy:
+                raise ValueError(f"最佳模型测试准确率 {best_test_acc:.4f} 低于阈值 {self.model_trainer_config.expected_accuracy}")
 
-                model_report[model_name] = grid_search.best_score_
-                best_estimators[model_name] = grid_search.best_estimator_
-                best_params_report[model_name] = grid_search.best_params_
-
-                fits_this_round = self._count_combinations(param_grid) * 3
-                fits_done += fits_this_round
-                logging.info(f"[PROGRESS]{fits_done}/{total_fits}")
-                logging.info(f"====== 模型 {model_name} 训练完成. ======")
-
-            best_model_name = max(model_report, key=model_report.get)
-            best_model = best_estimators[best_model_name]
-            best_model_score = model_report[best_model_name]
-
-            logging.info(f"==> 最佳模型: '{best_model_name}' | 交叉验证得分: {best_model_score:.4f}")
-
-            if best_model_score < self.model_trainer_config.expected_accuracy:
-                raise Exception(f"所有模型性能均未达到预期得分 {self.model_trainer_config.expected_accuracy}")
-
-            # 在完整训练集上评估最佳模型
             y_train_pred = best_model.predict(x_train)
-            train_metric = get_classification_metric(y_true=y_train, y_pred=y_train_pred)
-
-            # 在测试集上评估
             y_test_pred = best_model.predict(x_test)
+            train_metric = get_classification_metric(y_true=y_train, y_pred=y_train_pred)
             test_metric = get_classification_metric(y_true=y_test, y_pred=y_test_pred)
 
-            logging.info(f"训练集指标: {train_metric}")
-            logging.info(f"测试集指标: {test_metric}")
-
-            # 保存最终模型 (预处理器 + 模型)
             preprocessor = load_object(file_path=self.data_transformation_artifact.transformed_object_file_path)
             network_model = NetworkModel(preprocessor=preprocessor, model=best_model)
 
-            # 保存到本次运行的 artifact 目录
             os.makedirs(os.path.dirname(self.model_trainer_config.trained_model_file_path), exist_ok=True)
             save_object(file_path=self.model_trainer_config.trained_model_file_path, obj=network_model)
 
-            # 也保存一份到固定的 final_models 目录，供预测 API 使用
-            final_model_dir = "final_models"
-            os.makedirs(final_model_dir, exist_ok=True)
-            save_object(os.path.join(final_model_dir, "model.pkl"), best_model)
+            os.makedirs("final_models", exist_ok=True)
+            save_object(os.path.join("final_models", "model.pkl"), best_model)
+
+            result_df = pd.DataFrame(results).sort_values(by="test_accuracy", ascending=False)
+            summary_json_path = os.path.join(os.path.dirname(self.model_trainer_config.trained_model_file_path), "model_comparison.json")
+            result_df.to_json(summary_json_path, orient="records", force_ascii=False, indent=2)
+            plot_path = self._save_comparison_plot(result_df, os.path.dirname(self.model_trainer_config.trained_model_file_path))
+
+            logging.info(f"最佳模型: {best_model_name}, Test Acc={best_test_acc:.4f}")
+            logging.info(f"模型对比结果文件: {summary_json_path}")
+            logging.info(f"可视化图片: {plot_path}")
 
             return ModelTrainerArtifact(
                 trained_model_file_path=self.model_trainer_config.trained_model_file_path,
                 train_metric_artifact=train_metric,
-                test_metric_artifact=test_metric
+                test_metric_artifact=test_metric,
             )
+
         except Exception as e:
             raise NetworkSecurityException(e, sys) from e
 
     def initiate_model_trainer(self) -> ModelTrainerArtifact:
         try:
-            logging.info("开始加载转换后的数据...")
             train_arr = load_numpy_array_data(self.data_transformation_artifact.transformed_train_file_path)
             test_arr = load_numpy_array_data(self.data_transformation_artifact.transformed_test_file_path)
             x_train, y_train = train_arr[:, :-1], train_arr[:, -1]
             x_test, y_test = test_arr[:, :-1], test_arr[:, -1]
-            logging.info("数据加载完毕，即将开始模型训练...")
             return self.train_model(x_train=x_train, y_train=y_train, x_test=x_test, y_test=y_test)
         except Exception as e:
             raise NetworkSecurityException(e, sys) from e
