@@ -52,8 +52,12 @@ class DataValidation:
         try:
             expected_columns = [list(item.keys())[0] for item in self.schema_config["columns"]]
             missing_columns = [col for col in expected_columns if col not in dataframe.columns]
+            unexpected_columns = [col for col in dataframe.columns if col not in expected_columns]
             if missing_columns:
                 logging.error(f"缺失字段: {missing_columns}")
+                return False
+            if unexpected_columns:
+                logging.error(f"存在非schema字段: {unexpected_columns}")
                 return False
             return True
         except Exception as e:

@@ -69,7 +69,7 @@ class ModelTrainer:
             results = []
             best_model_name = None
             best_model = None
-            best_test_acc = -1
+            best_cv_score = -1
 
             for model_name, (model, params) in models.items():
                 logging.info(f"开始训练模型: {model_name}")
@@ -88,13 +88,13 @@ class ModelTrainer:
                     "test_accuracy": float(test_acc),
                 })
 
-                if test_acc > best_test_acc:
-                    best_test_acc = test_acc
+                if search.best_score_ > best_cv_score:
+                    best_cv_score = float(search.best_score_)
                     best_model_name = model_name
                     best_model = search.best_estimator_
 
-            if best_test_acc < self.model_trainer_config.expected_accuracy:
-                raise ValueError(f"最佳模型测试准确率 {best_test_acc:.4f} 低于阈值 {self.model_trainer_config.expected_accuracy}")
+            if best_cv_score < self.model_trainer_config.expected_accuracy:
+                raise ValueError(f"最佳模型CV F1 {best_cv_score:.4f} 低于阈值 {self.model_trainer_config.expected_accuracy}")
 
             y_train_pred = best_model.predict(x_train)
             y_test_pred = best_model.predict(x_test)
@@ -110,12 +110,12 @@ class ModelTrainer:
             os.makedirs("final_models", exist_ok=True)
             save_object(os.path.join("final_models", "model.pkl"), best_model)
 
-            result_df = pd.DataFrame(results).sort_values(by="test_accuracy", ascending=False)
+            result_df = pd.DataFrame(results).sort_values(by="cv_f1", ascending=False)
             summary_json_path = os.path.join(os.path.dirname(self.model_trainer_config.trained_model_file_path), "model_comparison.json")
             result_df.to_json(summary_json_path, orient="records", force_ascii=False, indent=2)
             plot_path = self._save_comparison_plot(result_df, os.path.dirname(self.model_trainer_config.trained_model_file_path))
 
-            logging.info(f"最佳模型: {best_model_name}, Test Acc={best_test_acc:.4f}")
+            logging.info(f"最佳模型: {best_model_name}, CV F1={best_cv_score:.4f}")
             logging.info(f"模型对比结果文件: {summary_json_path}")
             logging.info(f"可视化图片: {plot_path}")
 
