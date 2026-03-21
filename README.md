@@ -211,3 +211,32 @@ MIT License - 详见 [LICENSE](LICENSE) 文件
 **作者：** 梓铭
 
 **提示：** 这是一个学习项目，适合了解机器学习项目的完整流程。如果对你有帮助，请给个Star！⭐
+
+
+## 本科毕业设计：基于数据流特征的 DDoS 攻击检测
+
+项目已新增一个可直接运行的 Python 实验脚本，满足以下课程设计要求：
+
+- 使用 **CIC-IDS2017 Thursday CSV 作为训练集**，**Friday CSV 作为测试集**。
+- 自动删除 `Flow ID`、IP、时间戳等非数值列，并将标签转换为二分类：`BENIGN=0`，其余攻击流量为 `1`。
+- 使用中位数填补缺失值，随后完成标准化。
+- 使用随机森林计算特征重要性，保留 Top-20 特征。
+- 训练并比较三种模型：`MLP`、`RF`、`CNN-MLP`。
+- 输出 `Accuracy`、`Precision`、`Recall`、`F1-score`、分类报告以及模型对比结果。
+
+### 运行方式
+
+```bash
+python -m networksecurity.project.ddos_detection --dataset-dir /path/to/CIC-IDS2017
+```
+
+或者显式指定 Thursday / Friday 文件：
+
+```bash
+python -m networksecurity.project.ddos_detection   --train-path /path/to/Thursday-WorkingHours-Morning-WebAttacks.pcap_ISCX.csv   --test-path /path/to/Friday-WorkingHours-Afternoon-DDos.pcap_ISCX.csv
+```
+
+运行后会在 `artifacts/ddos_detection/` 下生成：
+
+- `ddos_experiment_results.json`：完整实验结果；
+- `model_comparison.csv`：三个模型的性能对比表。
